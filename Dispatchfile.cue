@@ -25,9 +25,7 @@ task "release": {
 }
 
 actions: [
-  {
     tasks: ["release"]
-    on push branches: ["master"]
-  },
+    on push tags: ["*"]
 ]
 
