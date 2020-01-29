@@ -1,0 +1,42 @@
+#!starlark
+# vi:syntax=python
+#
+#
+
+git = "src-git"
+gitResource(
+  git,
+  url="$(context.git.url)",
+  revision="$(context.git.commit)")
+
+gitops = "gitops-git"
+gitResource(
+  gitops,
+  url="https://github.com/cprovencher/cicd-hello-world-gitops",
+  revision="master")
+
+task("update-soak", inputs=[git, gitops], steps=[
+  v1.Container(
+    name="fetch-master",
+    image="alpine/git",
+    workingDir="/workspace/src-git",
+    args=[
+      "fetch",
+      "origin",
+      "master"
+    ]
+  ),
+  v1.Container(
+    name = "update-gitops-repo",
+    image = "mesosphere/update-gitops-repo:v1.0",
+    workingDir =  "/workspace/gitops-git/aws",
+    args = [
+      "-git-revision=$(context.git.commit)",
+      "-substitute=konvoyVersion=$(context.git.tag)",
+      "-filepath=docker/KONVOY-VERSION.yaml.tmpl",
+    ]
+  )
+])
+
+action(tasks=["update-soak"], on=tag(names=["v*"]))
+
