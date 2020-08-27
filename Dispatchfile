@@ -1,7 +1,8 @@
 #!mesosphere/dispatch-starlark:v0.6
 
-load("github.com/mesosphere/dispatch-catalog/starlark/stable/pipeline@0.0.6", "git_resource", "git_checkout_dir", "pull_request", "cron")
+load("github.com/mesosphere/dispatch-catalog/starlark/stable/pipeline@0.0.6", "git_resource", "git_checkout_dir", "pull_request", "cron", "push")
 load("github.com/cprovencher/import-dispatch-task-test/lints@0505574453ce1f7c4edd97bc6b44d85d184e45c6", "shellcheck")
+load("github.com/mesosphere/dispatch-catalog/starlark/stable/k8s@0.0.7", "secret_var")
 
 source_repo = git_resource("sources")
 
@@ -10,3 +11,20 @@ do_shellcheck = shellcheck("shellcheck", git_input=source_repo, paths=["script.s
 action(tasks=[do_shellcheck], on=pull_request())
 action(name="B", on=cron(schedule="0 4 8-14 * *    test $(date +\%u) -eq 6"), tasks=[do_shellcheck])
 
+task("slack-notify", steps=[
+  v1.Container(
+    name="slack-notify",
+    image="curlimages/curl:7.69.1",
+    args=[
+      "-X", "POST",
+      "-H", "Content-type: application/json",
+      "--data", "{\"text\":\"   sup \\n@cprovencher   \"}",
+      "$(CPROVENCHER_SLACK_HOOK)"
+    ],
+    env=[
+      k8s.corev1.EnvVar(name="CPROVENCHER_SLACK_HOOK", valueFrom=secret_var("cprovencher-slack-hook", "url"))
+    ]
+  )
+])
+
+action(tasks=["slack-notify"], on=push(branches=["slack-test"]))
