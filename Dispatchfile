@@ -7,7 +7,6 @@ source_repo = git_resource("sources")
 
 do_shellcheck = shellcheck("a_b", git_input=source_repo, paths=["script.sh"])
 
-action(tasks=[do_shellcheck], on=pull_request())
-action(name="A", on=cron(schedule="2 2 2 2 *"), tasks=["a_a"])
+#action(tasks=[do_shellcheck], on=pull_request())
 action(name="B", on=cron(schedule="1 1 1 1 *"), tasks=[do_shellcheck])
 
