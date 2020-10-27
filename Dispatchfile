@@ -9,5 +9,5 @@ do_shellcheck = shellcheck("a-b", git_input=source_repo, paths=["script.sh"])
 
 action(tasks=[do_shellcheck], on=pull_request())
 action(name="B", on=cron(schedule="1 1 1 1 1"), tasks=[do_shellcheck])
-action(name="release-test", tasks=[do_shellcheck], on=p.Condition(release=p.ReleaseCondition(tags=["testtag2"])))
+action(name="release-test", tasks=[do_shellcheck], on=p.Condition(release=p.ReleaseCondition(tags=["*"])))
 
