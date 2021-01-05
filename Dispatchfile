@@ -21,67 +21,46 @@ git_resource(
   url="https://github.com/cprovencher/cicd-hello-world-gitops",
   revision="master")
 
+DIND_IMAGE = "mesosphere/kommander-ci:1-3066ab8"
 
-task("update-soak", inputs=[gitops, git], steps=[
-  v1.Container(
-    name="fetch-master",
-    image="alpine/git:v2.24.3",
-    workingDir="/workspace/" + gitops,
-    args=[
-      "fetch",
-      "origin",
-      "master"
-    ]
-  ),
-  v1.Container(
-    name="print-branch",
-    image="mesosphere/bump-charts",
-    workingDir="/workspace/" + git,
-    command=["/bin/sh", "-c"],
-    args=["git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'"
-    ]
-  ),
-  v1.Container(
-    name = "update-gitops-repo",
-    image = "mesosphere/update-gitops-repo:1.1.1",
-    workingDir =  "/workspace/" + git,
-    command = ["/bin/sh", "-c"],
-    args = [
-      """
-      set -x
-      depth=10
-      git fetch --tags --depth=$depth origin master
-      tag_head_sha=$(git rev-parse $(context.git.tag))
-      git log origin/master -n $depth | grep -q $tag_head_sha
-      if [ "$?" -eq 1 ]; then
-        echo The commit from tag $(context.git.tag) is not on the master branch
-        exit 0
-      fi
-      cd /workspace/gitops-git
-      echo hello > aws/docker/KONVOY-VERSION.yaml
-      set +x
-      set -e
-      echo "$GPG_PRIVATE_KEY" > gpg_private_key
-      echo "$GPG_PUBLIC_KEY" > gpg_public_key
-      set -x
-      gpg --import gpg_private_key
-      gpg --import gpg_public_key
-      git config --local commit.gpgsign true
-      git config --local user.signingkey $GPG_KEY_ID
-      git config --local user.name 'Dispatch CI'
-      git config --local user.email '56653984+d2iq-dispatch@users.noreply.github.com'
-      update-gitops-repo \
-        -git-revision={} \
-        -filepath=none.yaml.tmpl \
-        -commit-message="Update Kommander to {}"
-      """.format("$(context.git.commit)", "$(context.git.tag)")
-    ],
-    env=[k8s.corev1.EnvVar(name="GPG_PRIVATE_KEY", valueFrom=secret_var("d2iq-dispatch-gpg", "private_key")),
-          k8s.corev1.EnvVar(name="GPG_PUBLIC_KEY", valueFrom=secret_var("d2iq-dispatch-gpg", "public_key")),
-          k8s.corev1.EnvVar(name="GPG_KEY_ID", valueFrom=secret_var("d2iq-dispatch-gpg", "key_id"))]
-  )
-])
 
-action(tasks=["update-soak"], on=push(branches=["master"]))
-action(tasks=["update-soak"], on=tag(names=["*"]))
+def npm_script_step(name, script, image=DIND_IMAGE, resources={
+    "cpu": k8s.resource_quantity("1"),
+    "memory": k8s.resource_quantity("2Gi")
+}, env=[]):
+    return v1.Container(
+        name=name,
+        image=image,
+        workingDir="$(inputs.resources.{preparedapp}.path)".format(preparedapp=prepared_app),
+        args=["npm", "run", script],
+        resources=k8s.corev1.ResourceRequirements(
+            limits=resources,
+            requests=resources
+        ),
+        env=env
+    )
 
+
+release = "release"
+dind_task(release, inputs=[prepared_app, code_checks, git_changes, kommander_e2e],
+     steps=[
+         untar_step(),
+         npm_script_step(
+             "release",
+             "semantic-release -- --ci",
+             image=DIND_IMAGE,
+             resources={
+                "cpu": k8s.resource_quantity("4"),
+                "memory": k8s.resource_quantity("10Gi")
+             },
+             env=[
+                k8s.corev1.EnvVar(name="JIRA_USER", value="svc.mergebot"),
+                k8s.corev1.EnvVar(name="JIRA_PASS", valueFrom=secret_var("jira-creds", "JIRA_PASS")),
+                k8s.corev1.EnvVar(name="CI", value="true"),
+                k8s.corev1.EnvVar(name="GITHUB_USER", valueFrom=secret_var("d2iq-dispatch-basic-auth", "username")),
+                k8s.corev1.EnvVar(name="GITHUB_TOKEN", valueFrom=secret_var("d2iq-dispatch-basic-auth", "password")),
+                k8s.corev1.EnvVar(name="GH_TOKEN", valueFrom=secret_var("d2iq-dispatch-basic-auth", "password"))
+             ]
+        )
+     ]
+)
