@@ -82,6 +82,6 @@ task("update-soak", inputs=[gitops, git], steps=[
   )
 ])
 
-action(tasks=["update-soak"], on=push(branches=["master"]))
-action(tasks=["update-soak"], on=tag(names=["*"]))
+#action(tasks=["update-soak"], on=push(branches=["master"]))
+#action(tasks=["update-soak"], on=tag(names=["*"]))
 
